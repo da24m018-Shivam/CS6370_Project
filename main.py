@@ -9,6 +9,8 @@ from sys import version_info
 import argparse
 import json
 import matplotlib.pyplot as plt
+import time
+import os  # Add this import
 
 # Input compatibility for Python 2 and Python 3
 if version_info.major == 3:
@@ -26,6 +28,10 @@ class SearchEngine:
 
 	def __init__(self, args):
 		self.args = args
+
+		# Create output directory if it doesn't exist
+		if not os.path.exists(self.args.out_folder):
+			os.makedirs(self.args.out_folder)
 
 		self.tokenizer = Tokenization()
 		self.sentenceSegmenter = SentenceSegmentation()
@@ -145,15 +151,16 @@ class SearchEngine:
 
 		# Read queries
 		queries_json = json.load(open(args.dataset + "cran_queries.json", 'r'))[:]
-		query_ids, queries = [item["query number"] for item in queries_json], \
+		query_ids, queries = [str(item["query number"]).strip() for item in queries_json], \
 								[item["query"] for item in queries_json]
 		# Process queries 
 		processedQueries = self.preprocessQueries(queries)
 
 		# Read documents
 		docs_json = json.load(open(args.dataset + "cran_docs.json", 'r'))[:]
-		doc_ids, docs = [item["id"] for item in docs_json], \
+		doc_ids, docs = [str(item["id"]).strip() for item in docs_json], \
 								[item["body"] for item in docs_json]
+
 		# Process documents
 		processedDocs = self.preprocessDocs(docs)
 
@@ -239,7 +246,7 @@ if __name__ == "__main__":
 	# Tunable parameters as external arguments
 	parser.add_argument('-dataset', default = "cranfield/", 
 						help = "Path to the dataset folder")
-	parser.add_argument('-out_folder', default = "output/", 
+	parser.add_argument('-out_folder', default = "results/", 
 						help = "Path to output folder")
 	parser.add_argument('-segmenter', default = "punkt",
 	                    help = "Sentence Segmenter Type [naive|punkt]")
@@ -251,6 +258,7 @@ if __name__ == "__main__":
 	# Parse the input arguments
 	args = parser.parse_args()
 
+	start_time = time.time()
 	# Create an instance of the Search Engine
 	searchEngine = SearchEngine(args)
 
@@ -259,3 +267,6 @@ if __name__ == "__main__":
 		searchEngine.handleCustomQuery()
 	else:
 		searchEngine.evaluateDataset()
+
+	end_time = time.time()
+	print("Total time taken : " + str(end_time - start_time) + " seconds")
