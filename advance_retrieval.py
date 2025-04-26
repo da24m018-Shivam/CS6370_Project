@@ -11,6 +11,7 @@ import networkx as nx
 from collections import defaultdict, Counter
 import numpy as np
 import math
+from gensim.models import Word2Vec
 
 class LSARetrieval:
     """
@@ -406,4 +407,140 @@ class WordNetRetrieval:
             
             doc_IDs_ordered.append(ranked_doc_ids)
     
+        return doc_IDs_ordered
+    
+
+class Word2VecRetrieval:
+    """
+    Word2Vec-based information retrieval system.
+    Uses word embeddings to capture semantic relationships between words.
+    """
+    
+    def __init__(self, vector_size=100, window=5, min_count=1):
+        """
+        Initialize the Word2Vec retrieval system.
+        
+        Parameters
+        ----------
+        vector_size : int
+            Dimensionality of the word vectors
+        window : int
+            Maximum distance between the current and predicted word within a sentence
+        min_count : int
+            Ignores all words with total frequency lower than this
+        """
+        self.vector_size = vector_size
+        self.window = window
+        self.min_count = min_count
+        self.model = None
+        self.doc_vectors = None
+        self.doc_IDs = None
+        
+    def buildIndex(self, docs, docIDs):
+        """
+        Build the Word2Vec index for the document collection.
+        
+        Parameters
+        ----------
+        docs : list
+            A list of lists of lists where each sub-list is a document and 
+            each sub-sub-list is a sentence of the document
+        docIDs : list
+            A list of integers denoting IDs of the documents
+        """
+        self.doc_IDs = docIDs
+        
+        # Prepare sentences for training Word2Vec
+        sentences = []
+        for doc in docs:
+            for sentence in doc:
+                if sentence:  # Skip empty sentences
+                    sentences.append(sentence)
+        
+        # Train Word2Vec model
+        self.model = Word2Vec(sentences, vector_size=self.vector_size, 
+                             window=self.window, min_count=self.min_count, workers=4)
+        
+        # Create document vectors by averaging word vectors
+        self.doc_vectors = []
+        for doc in docs:
+            # Flatten the document
+            flat_doc = [token for sentence in doc for token in sentence]
+            
+            # Calculate document vector as average of word vectors
+            doc_vector = np.zeros(self.vector_size)
+            word_count = 0
+            
+            for word in flat_doc:
+                if word in self.model.wv:
+                    doc_vector += self.model.wv[word]
+                    word_count += 1
+            
+            # Normalize by word count
+            if word_count > 0:
+                doc_vector /= word_count
+                
+            self.doc_vectors.append(doc_vector)
+            
+        # Convert to numpy array for efficient computation
+        self.doc_vectors = np.array(self.doc_vectors)
+        
+    def rank(self, queries):
+        """
+        Rank documents according to relevance for each query using Word2Vec.
+        
+        Parameters
+        ----------
+        queries : list
+            A list of lists of lists where each sub-list is a query and
+            each sub-sub-list is a sentence of the query
+            
+        Returns
+        -------
+        list
+            A list of lists of integers where the ith sub-list is a list of IDs
+            of documents in their predicted order of relevance to the ith query
+        """
+        doc_IDs_ordered = []
+        
+        # Process each query
+        for query in queries:
+            # Flatten the query
+            flat_query = [token for sentence in query for token in sentence]
+            
+            # Calculate query vector as average of word vectors
+            query_vector = np.zeros(self.vector_size)
+            word_count = 0
+            
+            for word in flat_query:
+                if word in self.model.wv:
+                    query_vector += self.model.wv[word]
+                    word_count += 1
+            
+            # Normalize by word count
+            if word_count > 0:
+                query_vector /= word_count
+                
+            # Calculate cosine similarity with all documents
+            similarities = []
+            
+            for i, doc_vector in enumerate(self.doc_vectors):
+                # Compute cosine similarity
+                doc_norm = np.linalg.norm(doc_vector)
+                query_norm = np.linalg.norm(query_vector)
+                
+                if doc_norm > 0 and query_norm > 0:
+                    sim = np.dot(doc_vector, query_vector) / (doc_norm * query_norm)
+                else:
+                    sim = 0.0
+                    
+                similarities.append((self.doc_IDs[i], sim))
+            
+            # Sort by similarity
+            similarities.sort(key=lambda x: x[1], reverse=True)
+            
+            # Extract sorted document IDs
+            ranked_doc_ids = [doc_id for doc_id, _ in similarities]
+            doc_IDs_ordered.append(ranked_doc_ids)
+            
         return doc_IDs_ordered
