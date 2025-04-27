@@ -544,3 +544,137 @@ class Word2VecRetrieval:
             doc_IDs_ordered.append(ranked_doc_ids)
             
         return doc_IDs_ordered
+
+class BM25Retrieval:
+    """
+    BM25 weighting implementation for information retrieval.
+    """
+    
+    def __init__(self, k1=1.5, b=0.75):
+        """
+        Initialize the BM25 retrieval system.
+        
+        Parameters
+        ----------
+        k1 : float
+            Term frequency normalization parameter
+        b : float
+            Document length normalization parameter
+        """
+        self.k1 = k1
+        self.b = b
+        self.index = None
+        self.doc_freqs = None
+        self.doc_lengths = None
+        self.avg_doc_length = 0
+        self.idf = None
+        self.doc_IDs = None
+        
+    def buildIndex(self, docs, docIDs):
+        """
+        Build the BM25 index for the document collection.
+        
+        Parameters
+        ----------
+        docs : list
+            A list of lists of lists where each sub-list is a document and 
+            each sub-sub-list is a sentence of the document
+        docIDs : list
+            A list of integers denoting IDs of the documents
+        """
+        # Store document IDs
+        self.doc_IDs = docIDs
+        
+        # Initialize index as a dictionary: term -> {doc_id -> term frequency}
+        index = defaultdict(lambda: defaultdict(int))
+        
+        # Initialize document frequencies: term -> number of documents containing the term
+        self.doc_freqs = defaultdict(int)
+        
+        # Initialize document lengths
+        self.doc_lengths = {}
+        
+        # Build the index
+        for i, doc in enumerate(docs):
+            doc_id = docIDs[i]
+            
+            # Flatten the document (list of lists of tokens) into a single list
+            flat_doc = [token for sentence in doc for token in sentence]
+            
+            # Store document length
+            self.doc_lengths[doc_id] = len(flat_doc)
+            
+            # Count term frequencies in the document
+            term_counts = Counter(flat_doc)
+            
+            # Update the index and document frequencies
+            for term, count in term_counts.items():
+                index[term][doc_id] = count
+                self.doc_freqs[term] += 1
+        
+        # Calculate average document length
+        self.avg_doc_length = sum(self.doc_lengths.values()) / len(docIDs) if docIDs else 0
+        
+        # Calculate IDF for each term
+        num_docs = len(docIDs)
+        self.idf = {}
+        for term, freq in self.doc_freqs.items():
+            # BM25 IDF formula
+            self.idf[term] = math.log((num_docs - freq + 0.5) / (freq + 0.5) + 1.0)
+        
+        self.index = dict(index)
+        
+    def rank(self, queries):
+        """
+        Rank documents according to relevance for each query using BM25.
+        
+        Parameters
+        ----------
+        queries : list
+            A list of lists of lists where each sub-list is a query and
+            each sub-sub-list is a sentence of the query
+            
+        Returns
+        -------
+        list
+            A list of lists of integers where the ith sub-list is a list of IDs
+            of documents in their predicted order of relevance to the ith query
+        """
+        doc_IDs_ordered = []
+        
+        # Process each query
+        for query in queries:
+            # Flatten the query (list of lists of tokens) into a single list
+            flat_query = [token for sentence in query for token in sentence]
+            
+            # Count term frequencies in the query
+            query_term_counts = Counter(flat_query)
+            
+            # Calculate BM25 scores for each document
+            scores = defaultdict(float)
+            
+            for term, query_tf in query_term_counts.items():
+                if term in self.index:
+                    # Get the IDF value for this term
+                    idf = self.idf.get(term, 0)
+                    
+                    # For each document containing this term
+                    for doc_id, doc_tf in self.index[term].items():
+                        # BM25 formula
+                        numerator = doc_tf * (self.k1 + 1)
+                        denominator = doc_tf + self.k1 * (1 - self.b + self.b * self.doc_lengths[doc_id] / self.avg_doc_length)
+                        scores[doc_id] += idf * (numerator / denominator)
+            
+            # Sort documents by score in descending order
+            ranked_docs = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+            
+            # Extract document IDs in ranked order
+            ranked_doc_ids = [doc_id for doc_id, score in ranked_docs]
+            
+            # Add any remaining documents (with score 0) in arbitrary order
+            remaining_docs = [doc_id for doc_id in self.doc_IDs if doc_id not in scores]
+            ranked_doc_ids.extend(remaining_docs)
+            
+            doc_IDs_ordered.append(ranked_doc_ids)
+    
+        return doc_IDs_ordered
