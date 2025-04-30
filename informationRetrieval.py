@@ -1,5 +1,3 @@
-from util import *
-
 # Add your import statements here
 import numpy as np
 from collections import defaultdict, Counter

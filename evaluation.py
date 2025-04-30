@@ -1,5 +1,4 @@
 # Import necessary libraries
-from util import *
 import numpy as np
 import math
 from collections import defaultdict

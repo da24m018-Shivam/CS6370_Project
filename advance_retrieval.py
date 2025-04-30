@@ -1,4 +1,3 @@
-from util import *
 import numpy as np
 from collections import defaultdict, Counter
 import math
@@ -126,7 +125,9 @@ class ESARetrieval:
         
         # If concept documents are provided, build the concept space
         if concept_docs:
-            self.concept_matrix = self.concept_vectorizer.fit_transform(concept_docs)
+            concepts = open(concept_docs, 'r', encoding='utf-8')
+            concepts = concepts.read().split("\n---\n")[:-1]
+            self.concept_matrix = self.concept_vectorizer.fit_transform(concepts)
         else:
             self.concept_matrix = None
             
